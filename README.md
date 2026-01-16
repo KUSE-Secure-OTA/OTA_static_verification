@@ -11,6 +11,39 @@ The verification pipeline checks:
 
 All experiments below are executed using pre-built OCI images from the attack scenario repository.
 
+## 🔁 Execution Flow Summary
+```text
+static/images/*.tar
+        ↓ (podman load)
+OCI image
+        ↓ (podman save --format docker-archive)
+*.docker.tar
+        ↓ (run_all.sh)
+static_out/<image_version>/
+        ├─ policy.log
+        ├─ sbom.json
+        ├─ secret.json
+        ├─ license.json
+        └─ fs.json
+```
+
+## 📦 Image Input & Output Convention
+### ✔️ Input image location
+Place pre-built OCI image archives (`.tar`) under the `static/images/` directory.
+Each image represents an independent attack scenario used for static verification.
+
+### ✔️ Image format conversion (OCI → docker-archive)
+The static verification pipeline operates on the `docker-archive` format internally.
+Therefore, each experiment follows this process:
+1. Load the OCI image using `podman load`
+2. Re-export the image as `docker-archive` using `podman save --format docker-archive`
+3. Pass the converted `.docker.tar` file to `run_all.sh` for static verification
+
+### ✔️ Verification output location
+All static verification artifacts (logs, policy decisions, and scanner outputs) are written to `static_out/<image_version>/.`
+
+
+## ⚙️ Static Verification Commands (Per Image)
 ### 1️⃣ ivi_2.3.1 (forbidden)
 ```bash
 podman load -i static/images/ivi_2.3.1.tar && \
@@ -68,3 +101,20 @@ bash static/run_all.sh static/images/ivi_2.3.5.docker.tar static_out/ivi_2.3.5
 ```bash
 cat static_out/ivi_2.3.5/policy.log
 ```
+
+## 📊 Expected Verification Outcomes (Examples)
+The following outputs show **representative examples** of `policy.log` for each image.
+They illustrate the **expected policy decisions** of the static verification pipeline.
+* Images **ivi_2.3.1–ivi_2.3.4** are **intentionally designed to FAIL**
+due to explicit policy violations.
+* Image **ivi_2.3.5** is expected to **PASS with warnings**, as it contains
+outdated or vulnerable packages but no hard policy violations.
+
+### ✔️ Expected Results Summary
+| Image Version | Scenario Type        | Expected Result   | Primary Failure Reason                |
+| ------------- | -------------------- | ----------------- | ------------------------------------- |
+| `ivi_2.3.1`   | Forbidden components | **FAILED**        | Forbidden SBOM component (`tcpdump`)  |
+| `ivi_2.3.2`   | Secret leakage       | **FAILED**        | Secrets detected in filesystem        |
+| `ivi_2.3.3`   | Malicious build      | **FAILED**        | Suspicious ENTRYPOINT / build history |
+| `ivi_2.3.4`   | Disallowed license   | **FAILED**        | AGPL license + forbidden component    |
+| `ivi_2.3.5`   | Outdated packages    | **PASSED (WARN)** | CVEs and license warnings only        |
